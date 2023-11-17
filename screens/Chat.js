@@ -1,137 +1,53 @@
-// import React, {
-//     useState,
-//     useEffect,
-//     useLayoutEffect,
-//     useCallback
-//   } from 'react';
-//   import { TouchableOpacity, Text } from 'react-native';  
-//   import { GiftedChat } from 'react-native-gifted-chat';
-//   import {
-//     collection,
-//     addDoc,
-//     orderBy,
-//     query,
-//     onSnapshot
-//   } from 'firebase/firestore';
-//   import { signOut } from 'firebase/auth';
-//   import { auth, database } from '../config/firebase';
-//   import { useNavigation } from '@react-navigation/native';
-//   import { AntDesign } from '@expo/vector-icons';
-//   import colors from '../colors';
-
-
-//   export default function Chat() {
-
-//     const [messages, setMessages] = useState([]);
-//     const navigation = useNavigation();
-
-//   const onSignOut = () => {
-//       signOut(auth).catch(error => console.log('Error logging out: ', error));
-//     };
-
-//     useLayoutEffect(() => {
-//         navigation.setOptions({
-//           headerRight: () => (
-//             <TouchableOpacity
-//               style={{
-//                 marginRight: 10
-//               }}
-//               onPress={onSignOut}
-//             >
-//               <AntDesign name="logout" size={24} color={colors.gray} style={{marginRight: 10}}/>
-//             </TouchableOpacity>
-//           )
-//         });
-//       }, [navigation]);
-
-//     useLayoutEffect(() => {
-
-//         const collectionRef = collection(database, 'chats');
-//         const q = query(collectionRef, orderBy('createdAt', 'desc'));
-
-//     const unsubscribe = onSnapshot(q, querySnapshot => {
-//         console.log('querySnapshot unsusbscribe');
-//           setMessages(
-//             querySnapshot.docs.map(doc => ({
-//               _id: doc.data()._id,
-//               createdAt: doc.data().createdAt.toDate(),
-//               text: doc.data().text,
-//               user: doc.data().user
-//             }))
-//           );
-//         });
-//     return unsubscribe;
-//       }, []);
-
-//     const onSend = useCallback((messages = []) => {
-//         setMessages(previousMessages =>
-//           GiftedChat.append(previousMessages, messages)
-//         );
-//         // setMessages([...messages, ...messages]);
-//         const { _id, createdAt, text, user } = messages[0];    
-//         addDoc(collection(database, 'chats'), {
-//           _id,
-//           createdAt,
-//           text,
-//           user
-//         });
-//       }, []);
-
-//       return (
-//         // <>
-//         //   {messages.map(message => (
-//         //     <Text key={message._id}>{message.text}</Text>
-//         //   ))}
-//         // </>
-//         <GiftedChat
-//           messages={messages}
-//           showAvatarForEveryMessage={false}
-//           showUserAvatar={false}
-//           onSend={messages => onSend(messages)}
-//           messagesContainerStyle={{
-//             backgroundColor: '#fff'
-//           }}
-//           textInputStyle={{
-//             backgroundColor: '#fff',
-//             borderRadius: 20,
-//           }}
-//           user={{
-//             _id: auth?.currentUser?.email,
-//             avatar: 'https://i.pravatar.cc/300'
-//           }}
-//         />
-//       );
-// }
 import React, {
   useState,
   useEffect,
   useLayoutEffect,
-  useCallback
-} from 'react';
- 
-import { TouchableOpacity, Text } from 'react-native';
-import { GiftedChat } from 'react-native-gifted-chat';
+  useCallback,
+} from "react";
+
+import { TouchableOpacity, Text } from "react-native";
+import { GiftedChat } from "react-native-gifted-chat";
 import {
   collection,
   addDoc,
   orderBy,
   query,
-  onSnapshot
-} from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
-import { auth, database } from '../config/firebase';
-import { useNavigation } from '@react-navigation/native';
-import { AntDesign } from '@expo/vector-icons';
-import colors from '../colors';
+  onSnapshot,
+  doc,
+  deleteDoc,
+} from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { auth, database } from "../config/firebase";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { AntDesign } from "@expo/vector-icons";
+import colors from "../colors";
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
+  const [selectedMessageId, setSelectedMessageId] = useState(null);
   const navigation = useNavigation();
+  const route = useRoute();
+  const { chatId } = route.params || {}; // Get the chat id from the route params
 
   const onSignOut = () => {
     signOut(auth)
-      .then(() => console.log('User signed out'))
-      .catch(error => console.log('Error logging out: ', error));
+      .then(() => console.log("User signed out"))
+      .catch((error) => console.log("Error logging out: ", error));
+  };
+  const onDeleteMessage = async () => {
+    if (selectedMessageId) {
+      try {
+        await deleteDoc(doc(database, `chats/${chatId}`, selectedMessageId));
+        setMessages((previousMessages) =>
+          previousMessages.filter(
+            (message) => message._id !== selectedMessageId
+          )
+        );
+        setSelectedMessageId(null); // Reset the selected message id
+      } catch (error) {
+        console.log("Error deleting message: ", error);
+      }
+    }
   };
 
   useLayoutEffect(() => {
@@ -139,61 +55,65 @@ export default function Chat() {
       headerRight: () => (
         <TouchableOpacity
           style={{ marginRight: 10 }}
-          onPress={onSignOut}
+          onPress={selectedMessageId ? onDeleteMessage : onSignOut}
         >
           <AntDesign name="logout" size={24} color={colors.gray} />
         </TouchableOpacity>
-      )
+      ),
     });
   }, [navigation]);
 
-  useLayoutEffect(() => {
-    const collectionRef = collection(database, 'chats');
-    const q = query(collectionRef, orderBy('createdAt', 'desc'));
+  useEffect(() => {
+    if (!chatId) {
+      return;
+    }
+    const collectionRef = collection(database, `chats/${chatId}`);
+    const q = query(collectionRef, orderBy("createdAt", "desc"));
 
-    const unsubscribe = onSnapshot(q, querySnapshot => {
-      console.log('querySnapshot unsusbscribe');
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      console.log("querySnapshot unsusbscribe");
       setMessages(
-        querySnapshot.docs.map(doc => ({
+        querySnapshot.docs.map((doc) => ({
           _id: doc.id,
           createdAt: doc.data().createdAt.toDate(),
           text: doc.data().text,
-          user: doc.data().user
+          user: doc.data().user,
         }))
       );
     });
     return unsubscribe;
-  }, []);
+  }, [chatId]);
 
   const onSend = useCallback((messages = []) => {
-    setMessages(previousMessages =>
+    setMessages((previousMessages) =>
       GiftedChat.append(previousMessages, messages)
     );
     const { _id, createdAt, text, user } = messages[0];
-    addDoc(collection(database, 'chats'), {
+    addDoc(collection(database, `chats/${chatId}`), {
       _id,
       createdAt,
       text,
       user
     })
-      .then(() => console.log('Message sent'))
-      .catch(error => console.log('Error sending message: ', error));
-  }, []);
+      .then(() => console.log("Message sent"))
+      .catch((error) => console.log("Error sending message: ", error));
+  }, [chatId]);
 
   return (
     <GiftedChat
       messages={messages}
       showAvatarForEveryMessage={false}
       showUserAvatar={false}
-      onSend={messages => onSend(messages)}
-      messagesContainerStyle={{ backgroundColor: '#fff' }}
-      textInputStyle={{ backgroundColor: '#fff', borderRadius: 20 }}
+      onSend={(messages) => onSend(messages)}
+      onLongPress={(context, message) => {
+        setSelectedMessageId(message._id); // Set the selected message id when a message is long-pressed
+      }}
+      messagesContainerStyle={{ backgroundColor: "#fff" }}
+      textInputStyle={{ backgroundColor: "#fff", borderRadius: 20 }}
       user={{
         _id: auth?.currentUser?.uid,
-        avatar: 'https://i.pravatar.cc/300'
+        avatar: "https://i.pravatar.cc/300",
       }}
     />
   );
 }
-
-
